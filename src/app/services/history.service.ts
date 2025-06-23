@@ -8,7 +8,7 @@ export interface HistoryItem {
   parameter2?: number;
   result: number;
   timestamp: Date;
-  expression: string; // "5 + 3 = 8" formatında
+  expression: string; // 
 }
 
 @Injectable({

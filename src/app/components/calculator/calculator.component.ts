@@ -2,6 +2,7 @@ import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CalculatorButtonComponent } from '../buttons/calculator-button.component';
 import { HistoryService, HistoryItem } from '../../services/history.service';
+import { CalculatorApiService, ResultDto } from '../../services/calculator-api.service';
 import { Observable } from 'rxjs';
 
 @Component({
@@ -13,7 +14,9 @@ import { Observable } from 'rxjs';
 })
 export class CalculatorComponent {
   displayValue: string = '0';
+  operationDisplay: string = ''; 
   errorMessage: string = '';
+  isCalculating: boolean = false;
   
   // Hesap makinesi durumu
   private currentValue: number = 0;
@@ -21,14 +24,20 @@ export class CalculatorComponent {
   private currentOperator: string = '';
   private waitingForNumber: boolean = false;
 
-  // History service injection
+  // Service injections
   private historyService = inject(HistoryService);
+  private apiService = inject(CalculatorApiService);
   
   // History observable
   public history$: Observable<HistoryItem[]> = this.historyService.history$;
 
   onButtonClick(label: string) {
     this.errorMessage = '';
+    
+    // Hesaplama devam ediyorsa button'ları devre dışı bırak
+    if (this.isCalculating) {
+      return;
+    }
     
     // Sayı butonları
     if (this.isNumber(label)) {
@@ -40,7 +49,7 @@ export class CalculatorComponent {
     }
     // Özel fonksiyon butonları
     else if (label === '=') {
-      this.calculate();
+      this.calculateWithAPI();
     }
     else if (label === 'C') {
       this.clear();
@@ -58,10 +67,10 @@ export class CalculatorComponent {
       this.inputDecimal();
     }
     else if (label === '√') {
-      this.squareRoot();
+      this.squareRootWithAPI();
     }
     
-    console.log(`Buton tıklandı: ${label}, Display: ${this.displayValue}`);
+    console.log(`🔘 Buton tıklandı: ${label}, Display: ${this.displayValue}`);
   }
 
   // History'den işlem seç
@@ -70,6 +79,7 @@ export class CalculatorComponent {
     this.currentValue = historyItem.result;
     this.waitingForNumber = true;
     this.currentOperator = '';
+    this.operationDisplay = '';
   }
 
   // History'yi temizle
@@ -124,17 +134,27 @@ export class CalculatorComponent {
       this.displayValue += num;
     }
     this.currentValue = parseFloat(this.displayValue);
+    
+    // İşlem devam ediyorsa operationDisplay'i güncelle
+    if (this.currentOperator) {
+      const displayOperator = this.currentOperator === '-' ? '−' : this.currentOperator;
+      this.operationDisplay = `${this.formatNumber(this.previousValue)} ${displayOperator} ${this.displayValue}`;
+    }
   }
 
   private inputOperator(operator: string) {
     if (this.currentOperator && !this.waitingForNumber) {
-      this.calculate();
+      this.calculateWithAPI();
+      return;
     }
     
     this.previousValue = this.currentValue;
-    // − operatörünü - olarak normalize et
     this.currentOperator = operator === '−' ? '-' : operator;
     this.waitingForNumber = true;
+    
+    // İşlem göstergesini güncelle
+    const displayOperator = this.currentOperator === '-' ? '−' : this.currentOperator;
+    this.operationDisplay = `${this.formatNumber(this.previousValue)} ${displayOperator}`;
   }
 
   private inputDecimal() {
@@ -143,6 +163,12 @@ export class CalculatorComponent {
       this.waitingForNumber = false;
     } else if (this.displayValue.indexOf('.') === -1) {
       this.displayValue += '.';
+    }
+    
+    // İşlem devam ediyorsa operationDisplay'i güncelle
+    if (this.currentOperator) {
+      const displayOperator = this.currentOperator === '-' ? '−' : this.currentOperator;
+      this.operationDisplay = `${this.formatNumber(this.previousValue)} ${displayOperator} ${this.displayValue}`;
     }
   }
 
@@ -153,116 +179,176 @@ export class CalculatorComponent {
       this.displayValue = '0';
     }
     this.currentValue = parseFloat(this.displayValue) || 0;
+    
+    // İşlem devam ediyorsa operationDisplay'i güncelle
+    if (this.currentOperator) {
+      const displayOperator = this.currentOperator === '-' ? '−' : this.currentOperator;
+      this.operationDisplay = `${this.formatNumber(this.previousValue)} ${displayOperator} ${this.displayValue}`;
+    }
   }
 
-  private calculate() {
+  // API ile hesaplama
+  private calculateWithAPI() {
     if (!this.currentOperator || this.waitingForNumber) {
       return;
     }
 
-    let result: number;
+    this.isCalculating = true;
+    this.displayValue = 'Hesaplanıyor...';
     
-    try {
-      switch (this.currentOperator) {
-        case '+':
-          result = this.previousValue + this.currentValue;
-          break;
-        case '-':
-          result = this.previousValue - this.currentValue;
-          break;
-        case '×':
-          result = this.previousValue * this.currentValue;
-          break;
-        case '÷':
-          if (this.currentValue === 0) {
-            this.errorMessage = 'Sıfıra bölme hatası';
-            return;
-          }
-          result = this.previousValue / this.currentValue;
-          break;
-        case '^':
-          result = Math.pow(this.previousValue, this.currentValue);
-          break;
-        default:
+    // Operasyon display'ini hazırla
+    const displayOperator = this.currentOperator === '-' ? '−' : this.currentOperator;
+    const operationExpression = `${this.formatNumber(this.previousValue)} ${displayOperator} ${this.formatNumber(this.currentValue)}`;
+    this.operationDisplay = operationExpression;
+
+    let apiCall: Observable<ResultDto>;
+    
+    switch (this.currentOperator) {
+      case '+':
+        apiCall = this.apiService.add(this.previousValue, this.currentValue);
+        break;
+      case '-':
+        apiCall = this.apiService.subtract(this.previousValue, this.currentValue);
+        break;
+      case '×':
+        apiCall = this.apiService.multiply(this.previousValue, this.currentValue);
+        break;
+      case '÷':
+        if (this.currentValue === 0) {
+          this.showError('Sıfıra bölme hatası!');
           return;
-      }
-
-      // History'ye kaydet
-      this.historyService.addOperation(
-        this.currentOperator,
-        this.previousValue,
-        this.currentValue,
-        result
-      );
-
-      this.displayValue = this.formatResult(result);
-      this.currentValue = result;
-      this.currentOperator = '';
-      this.waitingForNumber = true;
-      
-    } catch (error) {
-      this.errorMessage = 'Hesaplama hatası';
+        }
+        apiCall = this.apiService.divide(this.previousValue, this.currentValue);
+        break;
+      case '^':
+        apiCall = this.apiService.power(this.previousValue, this.currentValue);
+        break;
+      default:
+        this.showError('Geçersiz operatör!');
+        return;
     }
+
+    apiCall.subscribe({
+      next: (response: ResultDto) => {
+        console.log('🎯 API Başarılı:', response);
+        const result = response.result;
+        
+        // History'ye ekle
+        this.historyService.addOperation(this.currentOperator, this.previousValue, this.currentValue, result);
+        
+        // Sonucu göster
+        this.displayValue = this.formatResult(result);
+        this.currentValue = result;
+        this.previousValue = 0;
+        this.currentOperator = '';
+        this.waitingForNumber = true;
+        this.operationDisplay = '';
+        this.isCalculating = false;
+      },
+      error: (error: Error) => {
+        console.error('❌ API Hatası:', error);
+        this.showError(error.message);
+      }
+    });
   }
 
-  private squareRoot() {
+  // API ile karekök
+  private squareRootWithAPI() {
     if (this.currentValue < 0) {
-      this.errorMessage = 'Negatif sayının karekökü alınamaz';
+      this.showError('Negatif sayının karekökü alınamaz!');
       return;
     }
+
+    this.isCalculating = true;
+    const originalValue = this.currentValue;
+    this.displayValue = 'Hesaplanıyor...';
+    const operationExpression = `√${this.formatNumber(originalValue)}`;
+    this.operationDisplay = operationExpression;
+
+    this.apiService.squareRoot(originalValue).subscribe({
+      next: (response: ResultDto) => {
+        console.log('🎯 Karekök API Başarılı:', response);
+        const result = response.result;
+        
+        // History'ye ekle
+        this.historyService.addOperation('√', originalValue, undefined, result);
+        
+        // Sonucu göster
+        this.displayValue = this.formatResult(result);
+        this.currentValue = result;
+        this.previousValue = 0;
+        this.currentOperator = '';
+        this.waitingForNumber = true;
+        this.operationDisplay = '';
+        this.isCalculating = false;
+      },
+      error: (error: Error) => {
+        console.error('❌ Karekök API Hatası:', error);
+        this.showError(error.message);
+      }
+    });
+  }
+
+  // Hata mesajı göster
+  private showError(message: string) {
+    this.errorMessage = message;
+    this.displayValue = 'Hata';
+    this.isCalculating = false;
+    this.currentOperator = '';
+    this.operationDisplay = '';
     
-    const result = Math.sqrt(this.currentValue);
-    
-    // History'ye kaydet
-    this.historyService.addOperation(
-      '√',
-      this.currentValue,
-      undefined,
-      result
-    );
-    
-    this.displayValue = this.formatResult(result);
-    this.currentValue = result;
-    this.waitingForNumber = true;
+    // 5 saniye sonra hata mesajını temizle
+    setTimeout(() => {
+      this.errorMessage = '';
+      this.clear();
+    }, 5000);
   }
 
   private toggleSign() {
-    if (this.displayValue !== '0') {
+    if (this.displayValue !== '0' && this.displayValue !== 'Hata' && this.displayValue !== 'Hesaplanıyor...') {
       if (this.displayValue.startsWith('-')) {
         this.displayValue = this.displayValue.substring(1);
       } else {
         this.displayValue = '-' + this.displayValue;
       }
       this.currentValue = parseFloat(this.displayValue);
+      
+      // İşlem devam ediyorsa operationDisplay'i güncelle
+      if (this.currentOperator) {
+        const displayOperator = this.currentOperator === '-' ? '−' : this.currentOperator;
+        this.operationDisplay = `${this.formatNumber(this.previousValue)} ${displayOperator} ${this.displayValue}`;
+      }
     }
   }
 
   private clear() {
     this.displayValue = '0';
+    this.operationDisplay = '';
     this.currentValue = 0;
     this.previousValue = 0;
     this.currentOperator = '';
     this.waitingForNumber = false;
     this.errorMessage = '';
+    this.isCalculating = false;
   }
 
   private clearEntry() {
     this.displayValue = '0';
     this.currentValue = 0;
-    this.waitingForNumber = false;
+    this.errorMessage = '';
   }
 
   private formatResult(result: number): string {
-    // Çok büyük veya çok küçük sayılar için bilimsel notasyon
-    if (Math.abs(result) > 999999999999 || (Math.abs(result) < 0.000001 && result !== 0)) {
+    // Çok uzun ondalık sayıları kısalt
+    if (Math.abs(result) < 0.000001 && result !== 0) {
       return result.toExponential(6);
     }
     
-    // Ondalık sayılar için maksimum 10 basamak
-    if (result % 1 !== 0) {
-      return parseFloat(result.toFixed(10)).toString();
-    }
-    
-    return result.toString();
+    const formatted = result.toString();
+    return formatted.length > 12 ? parseFloat(result.toPrecision(10)).toString() : formatted;
+  }
+
+  private formatNumber(num: number): string {
+    return num.toString();
   }
 }

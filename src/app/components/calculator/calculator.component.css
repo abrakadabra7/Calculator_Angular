@@ -17,11 +17,33 @@
     -20px -20px 60px #3e5771;
 }
 
-.display {
+.display-container {
   background: linear-gradient(145deg, #1a252f, #2c3e50);
   border-radius: 15px;
-  padding: 20px;
+  padding: 15px 20px 20px 20px;
   margin-bottom: 20px;
+  box-shadow: 
+    inset 8px 8px 15px #1a252f,
+    inset -8px -8px 15px #3e5771;
+}
+
+.operation-display {
+  text-align: right;
+  font-size: 1.2rem;
+  font-weight: 300;
+  color: #7f8c8d;
+  margin-bottom: 8px;
+  min-height: 1.5rem;
+  font-family: 'Courier New', monospace;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.operation-display.visible {
+  opacity: 1;
+}
+
+.display {
   text-align: right;
   min-height: 60px;
   display: flex;
@@ -30,9 +52,6 @@
   font-size: 2.5rem;
   font-weight: 300;
   color: #ecf0f1;
-  box-shadow: 
-    inset 8px 8px 15px #1a252f,
-    inset -8px -8px 15px #3e5771;
 }
 
 .error {
@@ -188,5 +207,9 @@
   .display {
     font-size: 2rem;
     min-height: 50px;
+  }
+  
+  .operation-display {
+    font-size: 1rem;
   }
 }

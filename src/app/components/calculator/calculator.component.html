@@ -1,8 +1,13 @@
 <div class="calculator-container">
   <div class="calculator-main">
-    <div class="display">
-      <span *ngIf="errorMessage" class="error">{{ errorMessage }}</span>
-      <span *ngIf="!errorMessage">{{ displayValue }}</span>
+    <div class="display-container">
+      <div class="operation-display" [class.visible]="operationDisplay">
+        {{ operationDisplay || '&nbsp;' }}
+      </div>
+      <div class="display">
+        <span *ngIf="errorMessage" class="error">{{ errorMessage }}</span>
+        <span *ngIf="!errorMessage">{{ displayValue }}</span>
+      </div>
     </div>
     <div class="button-area">
       <app-calculator-button (buttonClick)="onButtonClick($event)"></app-calculator-button>
