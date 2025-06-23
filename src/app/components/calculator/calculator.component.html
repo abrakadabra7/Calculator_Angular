@@ -1,0 +1,35 @@
+<div class="calculator-container">
+  <div class="calculator-main">
+    <div class="display">
+      <span *ngIf="errorMessage" class="error">{{ errorMessage }}</span>
+      <span *ngIf="!errorMessage">{{ displayValue }}</span>
+    </div>
+    <div class="button-area">
+      <app-calculator-button (buttonClick)="onButtonClick($event)"></app-calculator-button>
+    </div>
+  </div>
+  
+  <div class="history-panel">
+    <div class="history-header">
+      <h3>Geçmiş</h3>
+      <button class="clear-history-btn" (click)="onClearHistory()">
+        🗑️ Temizle
+      </button>
+    </div>
+    
+    <div class="history-list">
+      <div *ngIf="(history$ | async)?.length === 0" class="no-history">
+        Henüz işlem yok
+      </div>
+      
+      <div 
+        *ngFor="let item of (history$ | async); trackBy: trackByHistoryId" 
+        class="history-item"
+        (click)="onHistorySelect(item)"
+      >
+        <div class="history-expression">{{ item.expression }}</div>
+        <div class="history-time">{{ formatTime(item.timestamp) }}</div>
+      </div>
+    </div>
+  </div>
+</div>

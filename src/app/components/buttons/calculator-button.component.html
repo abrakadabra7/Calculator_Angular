@@ -1,0 +1,11 @@
+<div class="button-grid">
+  <div class="button-row" *ngFor="let row of buttons">
+    <button
+      *ngFor="let btn of row"
+      [ngClass]="[btn.type, btn.extraClass || '']"
+      (click)="onClick(btn.label)"
+    >
+      {{ btn.label }}
+    </button>
+  </div>
+</div> 
