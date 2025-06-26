@@ -1,5 +1,8 @@
-import { Injectable } from '@angular/core';
-import { BehaviorSubject, Observable } from 'rxjs';
+import { Injectable, PLATFORM_ID, inject } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
+import { BehaviorSubject, Observable, of } from 'rxjs';
+import { CalculatorApiService, HistoryEntity } from './calculator-api.service';
+import { catchError, tap } from 'rxjs/operators';
 
 export interface HistoryItem {
   id: number;
@@ -18,13 +21,15 @@ export class HistoryService {
   private readonly maxHistoryItems = 5;
   private historySubject = new BehaviorSubject<HistoryItem[]>([]);
   private nextId = 1;
-
+  private platformId = inject(PLATFORM_ID);
+  private apiService = inject(CalculatorApiService);
+  private useApi = true; 
   // Observable olarak history'yi dışarı veriyoruz
   public history$: Observable<HistoryItem[]> = this.historySubject.asObservable();
 
   constructor() {
-    // LocalStorage'dan geçmişi yükle
-    this.loadHistoryFromStorage();
+    // History'yi yükle (API veya LocalStorage'dan)
+    this.loadHistory();
   }
 
   // Yeni işlem ekle
@@ -50,8 +55,24 @@ export class HistoryService {
 
   // Geçmişi temizle
   clearHistory(): void {
-    this.historySubject.next([]);
-    this.saveHistoryToStorage([]);
+    if (this.useApi) {
+      this.apiService.clearHistory().pipe(
+        tap(() => {
+          console.log('✅ History API ile temizlendi');
+          this.historySubject.next([]);
+        }),
+        catchError(error => {
+          console.warn('❌ History API temizlenemedi, LocalStorage\'a geçiliyor:', error);
+          this.useApi = false;
+          this.historySubject.next([]);
+          this.saveHistoryToStorage([]);
+          return of(null);
+        })
+      ).subscribe();
+    } else {
+      this.historySubject.next([]);
+      this.saveHistoryToStorage([]);
+    }
   }
 
   // Mevcut geçmişi al
@@ -98,34 +119,77 @@ export class HistoryService {
 
   // LocalStorage'a kaydet
   private saveHistoryToStorage(history: HistoryItem[]): void {
-    try {
-      localStorage.setItem('calculator-history', JSON.stringify(history));
-    } catch (error) {
-      console.warn('LocalStorage\'a geçmiş kaydedilemedi:', error);
+    if (isPlatformBrowser(this.platformId)) {
+      try {
+        localStorage.setItem('calculator-history', JSON.stringify(history));
+      } catch (error) {
+        console.warn('LocalStorage\'a geçmiş kaydedilemedi:', error);
+      }
+    }
+  }
+
+  // History'yi API'den veya LocalStorage'dan yükle
+  private loadHistory(): void {
+    if (this.useApi) {
+      this.apiService.getHistory().pipe(
+        tap(apiHistory => {
+          console.log('✅ History API\'den yüklendi:', apiHistory);
+          const history = this.convertApiHistoryToLocal(apiHistory);
+          this.historySubject.next(history);
+        }),
+        catchError(error => {
+          console.warn('❌ History API\'den yüklenemedi, LocalStorage\'a geçiliyor:', error);
+          this.useApi = false;
+          this.loadHistoryFromStorage();
+          return of([]);
+        })
+      ).subscribe();
+    } else {
+      this.loadHistoryFromStorage();
     }
   }
 
   // LocalStorage'dan yükle
   private loadHistoryFromStorage(): void {
-    try {
-      const saved = localStorage.getItem('calculator-history');
-      if (saved) {
-        const history: HistoryItem[] = JSON.parse(saved);
-        // Timestamp'leri Date objesine çevir
-        history.forEach(item => {
-          item.timestamp = new Date(item.timestamp);
-        });
-        
-        // NextId'yi ayarla
-        if (history.length > 0) {
-          this.nextId = Math.max(...history.map(h => h.id)) + 1;
+    if (isPlatformBrowser(this.platformId)) {
+      try {
+        const saved = localStorage.getItem('calculator-history');
+        if (saved) {
+          const history: HistoryItem[] = JSON.parse(saved);
+          // Timestamp'leri Date objesine çevir
+          history.forEach(item => {
+            item.timestamp = new Date(item.timestamp);
+          });
+          
+          // NextId'yi ayarla
+          if (history.length > 0) {
+            this.nextId = Math.max(...history.map(h => h.id)) + 1;
+          }
+          
+          this.historySubject.next(history);
         }
-        
-        this.historySubject.next(history);
+      } catch (error) {
+        console.warn('LocalStorage\'dan geçmiş yüklenemedi:', error);
+        this.historySubject.next([]);
       }
-    } catch (error) {
-      console.warn('LocalStorage\'dan geçmiş yüklenemedi:', error);
-      this.historySubject.next([]);
     }
+  }
+
+  // API history'sini local history'ye çevir
+  private convertApiHistoryToLocal(apiHistory: HistoryEntity[]): HistoryItem[] {
+    return apiHistory.slice(0, this.maxHistoryItems).map((item, index) => ({
+      id: this.nextId++,
+      operation: this.apiService.mapApiOperationToLocal(item.operation),
+      parameter1: item.parameter1,
+      parameter2: item.parameter2 || undefined,
+      result: item.result,
+      timestamp: new Date(item.date),
+      expression: this.formatExpression(
+        this.apiService.mapApiOperationToLocal(item.operation), 
+        item.parameter1, 
+        item.parameter2, 
+        item.result
+      )
+    }));
   }
 } 

@@ -2,7 +2,9 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders, HttpErrorResponse } from '@angular/common/http';
 import { Observable, throwError } from 'rxjs';
 import { catchError, tap, retry } from 'rxjs/operators';
+import { environment } from '../../environments/environment';
 
+// API dokümantasyonundaki interface'ler
 export interface CalculateRequestDto {
   parameter1: number;
   parameter2: number;
@@ -13,138 +15,197 @@ export interface ResultDto {
   operation: 'ADDITION' | 'SUBTRACTION' | 'MULTIPLICATION' | 'DIVISION' | 'SQUARE_ROOT' | 'POWER';
 }
 
+export interface HistoryEntity {
+  operation: 'ADDITION' | 'SUBTRACTION' | 'MULTIPLICATION' | 'DIVISION' | 'SQUARE_ROOT' | 'POWER';
+  parameter1: number;
+  parameter2: number;
+  result: number;
+  date: string; 
+}
+
 @Injectable({
   providedIn: 'root'
 })
 export class CalculatorApiService {
-  private readonly baseUrl = 'http://s1.divlop.com:5001/api/calculator';
+  private readonly baseUrl = environment.useProxy ? '' : environment.apiUrl;
   private readonly token = 'ipEjAfe1zXy1EAEsIzFQJacDCjcMDwJRt2rZIlIXoqb4e7TyE4HWM0A1bZSPDChB';
-  private authFormat = 'Bearer'; // Bearer, Basic, Token, veya direct
 
   constructor(private http: HttpClient) {}
 
-  private getHeaders(format: string = this.authFormat): HttpHeaders {
-    let authValue: string;
-    
-    switch (format) {
-      case 'Bearer':
-        authValue = `Bearer ${this.token}`;
-        break;
-      case 'Token':
-        authValue = `Token ${this.token}`;
-        break;
-      case 'Basic':
-        authValue = `Basic ${this.token}`;
-        break;
-      case 'direct':
-        authValue = this.token;
-        break;
-      default:
-        authValue = `Bearer ${this.token}`;
-    }
-
-    console.log(`🔑 Authorization Header: ${format} -> ${authValue.substring(0, 20)}...`);
-    
+  private getHeaders(): HttpHeaders {
     return new HttpHeaders({
       'Content-Type': 'application/json',
-      'Authorization': authValue
+      'Authorization': `Bearer ${this.token}`
     });
   }
 
   private handleError(error: HttpErrorResponse): Observable<never> {
-    console.error('🚨 API Hatası Detayı:', {
+    console.error('🚨 API Hatası:', {
       status: error.status,
       statusText: error.statusText,
       url: error.url,
       message: error.message,
-      error: error.error,
-      headers: error.headers.keys()
+      error: error.error
     });
     
     let errorMessage = 'Bilinmeyen hata';
     
     if (error.status === 0) {
-      errorMessage = 'CORS hatası: API sunucusuna bağlanılamıyor';
+      errorMessage = 'API sunucusuna bağlanılamıyor (CORS hatası)';
     } else if (error.status === 401) {
-      // 401 hatası aldığımızda farklı format deneyelim
-      if (this.authFormat === 'Bearer') {
-        console.log('🔄 Bearer başarısız, Token formatını deniyorum...');
-        this.authFormat = 'Token';
-      } else if (this.authFormat === 'Token') {
-        console.log('🔄 Token başarısız, direct formatını deniyorum...');
-        this.authFormat = 'direct';
-      } else if (this.authFormat === 'direct') {
-        console.log('🔄 Direct başarısız, Basic formatını deniyorum...');
-        this.authFormat = 'Basic';
-      } else {
-        errorMessage = 'Yetkilendirme hatası - Tüm token formatları denendi';
-      }
+      errorMessage = 'Yetkilendirme hatası - Geçersiz token';
     } else if (error.status === 403) {
       errorMessage = 'Erişim reddedildi';
     } else if (error.status === 404) {
       errorMessage = 'API endpoint bulunamadı';
     } else if (error.status >= 500) {
       errorMessage = 'Sunucu hatası';
+    } else if (error.error?.message) {
+      errorMessage = error.error.message;
     }
     
     return throwError(() => new Error(errorMessage));
   }
 
-  private makeRequest<T>(endpoint: string, body: CalculateRequestDto): Observable<T> {
-    const url = `${this.baseUrl}${endpoint}`;
-    console.log(`📡 API İsteği:`, { 
-      url, 
-      body,
-      authFormat: this.authFormat 
-    });
+  // Calculator API metodları
+  add(parameter1: number, parameter2: number): Observable<ResultDto> {
+    const url = `${this.baseUrl}/api/calculator/add`;
+    const body: CalculateRequestDto = { parameter1, parameter2 };
     
-    return this.http.post<T>(url, body, {
-      headers: this.getHeaders()
-    }).pipe(
-      tap(response => console.log(`✅ API Başarılı (${endpoint}):`, response)),
-      retry(1), // Bir kez tekrar dene
+    console.log('📡 Toplama API çağrısı:', { url, body });
+    
+    return this.http.post<ResultDto>(url, body, { headers: this.getHeaders() }).pipe(
+      tap(response => console.log('✅ Toplama başarılı:', response)),
+      retry(1),
       catchError(this.handleError.bind(this))
     );
   }
 
-  // Toplama işlemi
-  add(parameter1: number, parameter2: number): Observable<ResultDto> {
-    return this.makeRequest<ResultDto>('/add', { parameter1, parameter2 });
-  }
-
-  // Çıkarma işlemi
   subtract(parameter1: number, parameter2: number): Observable<ResultDto> {
-    return this.makeRequest<ResultDto>('/subtract', { parameter1, parameter2 });
+    const url = `${this.baseUrl}/api/calculator/subtract`;
+    const body: CalculateRequestDto = { parameter1, parameter2 };
+    
+    console.log('📡 Çıkarma API çağrısı:', { url, body });
+    
+    return this.http.post<ResultDto>(url, body, { headers: this.getHeaders() }).pipe(
+      tap(response => console.log('✅ Çıkarma başarılı:', response)),
+      retry(1),
+      catchError(this.handleError.bind(this))
+    );
   }
 
-  // Çarpma işlemi
   multiply(parameter1: number, parameter2: number): Observable<ResultDto> {
-    return this.makeRequest<ResultDto>('/multiply', { parameter1, parameter2 });
+    const url = `${this.baseUrl}/api/calculator/multiply`;
+    const body: CalculateRequestDto = { parameter1, parameter2 };
+    
+    console.log('📡 Çarpma API çağrısı:', { url, body });
+    
+    return this.http.post<ResultDto>(url, body, { headers: this.getHeaders() }).pipe(
+      tap(response => console.log('✅ Çarpma başarılı:', response)),
+      retry(1),
+      catchError(this.handleError.bind(this))
+    );
   }
 
-  // Bölme işlemi
   divide(parameter1: number, parameter2: number): Observable<ResultDto> {
-    return this.makeRequest<ResultDto>('/divide', { parameter1, parameter2 });
+    const url = `${this.baseUrl}/api/calculator/divide`;
+    const body: CalculateRequestDto = { parameter1, parameter2 };
+    
+    console.log('📡 Bölme API çağrısı:', { url, body });
+    
+    return this.http.post<ResultDto>(url, body, { headers: this.getHeaders() }).pipe(
+      tap(response => console.log('✅ Bölme başarılı:', response)),
+      retry(1),
+      catchError(this.handleError.bind(this))
+    );
   }
 
-  // Üs alma işlemi
   power(parameter1: number, parameter2: number): Observable<ResultDto> {
-    return this.makeRequest<ResultDto>('/power', { parameter1, parameter2 });
+    const url = `${this.baseUrl}/api/calculator/power`;
+    const body: CalculateRequestDto = { parameter1, parameter2 };
+    
+    console.log('📡 Üs alma API çağrısı:', { url, body });
+    
+    return this.http.post<ResultDto>(url, body, { headers: this.getHeaders() }).pipe(
+      tap(response => console.log('✅ Üs alma başarılı:', response)),
+      retry(1),
+      catchError(this.handleError.bind(this))
+    );
   }
 
-  // Karekök işlemi
   squareRoot(parameter1: number): Observable<ResultDto> {
-    return this.makeRequest<ResultDto>('/squareRoot', { parameter1, parameter2: 0 });
+    const url = `${this.baseUrl}/api/calculator/squareRoot`;
+    const body: CalculateRequestDto = { parameter1, parameter2: 0 }; 
+    
+    console.log('📡 Karekök API çağrısı:', { url, body });
+    
+    return this.http.post<ResultDto>(url, body, { headers: this.getHeaders() }).pipe(
+      tap(response => console.log('✅ Karekök başarılı:', response)),
+      retry(1),
+      catchError(this.handleError.bind(this))
+    );
   }
 
-  // Test için farklı auth formatını manuel olarak ayarla
-  setAuthFormat(format: 'Bearer' | 'Token' | 'Basic' | 'direct') {
-    this.authFormat = format;
-    console.log(`🔧 Auth format değiştirildi: ${format}`);
+  // History API metodları
+  getHistory(): Observable<HistoryEntity[]> {
+    const url = `${this.baseUrl}/api/history/getHistory`;
+    
+    console.log('📡 History API çağrısı:', { url });
+    
+    return this.http.get<HistoryEntity[]>(url, { headers: this.getHeaders() }).pipe(
+      tap(response => console.log('✅ History başarılı:', response)),
+      retry(1),
+      catchError(this.handleError.bind(this))
+    );
   }
 
-  // Mevcut auth formatını öğren
-  getCurrentAuthFormat(): string {
-    return this.authFormat;
+  getAllHistory(): Observable<HistoryEntity[]> {
+    const url = `${this.baseUrl}/api/history/getAllHistory`;
+    
+    console.log('📡 All History API çağrısı:', { url });
+    
+    return this.http.get<HistoryEntity[]>(url, { headers: this.getHeaders() }).pipe(
+      tap(response => console.log('✅ All History başarılı:', response)),
+      retry(1),
+      catchError(this.handleError.bind(this))
+    );
+  }
+
+  clearHistory(): Observable<void> {
+    const url = `${this.baseUrl}/api/history/clearHistory`;
+    
+    console.log('📡 Clear History API çağrısı:', { url });
+    
+    return this.http.delete<void>(url, { headers: this.getHeaders() }).pipe(
+      tap(() => console.log('✅ Clear History başarılı')),
+      retry(1),
+      catchError(this.handleError.bind(this))
+    );
+  }
+
+  // API operation enum'ını local operation'a çevir
+  mapApiOperationToLocal(apiOperation: string): string {
+    switch (apiOperation) {
+      case 'ADDITION': return '+';
+      case 'SUBTRACTION': return '-';
+      case 'MULTIPLICATION': return '×';
+      case 'DIVISION': return '÷';
+      case 'POWER': return '^';
+      case 'SQUARE_ROOT': return '√';
+      default: return apiOperation;
+    }
+  }
+
+  // Local operation'ı API operation enum'ına çevir
+  mapLocalOperationToApi(localOperation: string): string {
+    switch (localOperation) {
+      case '+': return 'ADDITION';
+      case '-': return 'SUBTRACTION';
+      case '×': return 'MULTIPLICATION';
+      case '÷': return 'DIVISION';
+      case '^': return 'POWER';
+      case '√': return 'SQUARE_ROOT';
+      default: return localOperation;
+    }
   }
 } 
