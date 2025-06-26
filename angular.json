@@ -67,7 +67,8 @@
               "buildTarget": "hesap-makinesi:build:production"
             },
             "development": {
-              "buildTarget": "hesap-makinesi:build:development"
+              "buildTarget": "hesap-makinesi:build:development",
+              "proxyConfig": "proxy.conf.json"
             }
           },
           "defaultConfiguration": "development"
