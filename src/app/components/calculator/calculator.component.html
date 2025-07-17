@@ -23,17 +23,25 @@
     </div>
     
     <div class="history-list">
-      <div *ngIf="(history$ | async)?.length === 0" class="no-history">
+      <div *ngIf="(historyWithDollar$ | async)?.length === 0" class="no-history">
         Henüz işlem yok
       </div>
       
       <div 
-        *ngFor="let item of (history$ | async); trackBy: trackByHistoryId" 
+        *ngFor="let obj of (historyWithDollar$ | async); trackBy: trackByHistoryId" 
         class="history-item"
-        (click)="onHistorySelect(item)"
+        (click)="onHistorySelect(obj.item)"
       >
-        <div class="history-expression">{{ item.expression }}</div>
-        <div class="history-time">{{ formatTime(item.timestamp) }}</div>
+        <div class="history-expression">
+          {{ obj.item.expression }}
+          <button (click)="showDollar(obj.item.id); $event.stopPropagation()" class="dollar-btn">
+            <span class="icon">$</span> Dolar Kuruna Çevir
+          </button>
+          <span *ngIf="shownDollarId === obj.item.id && obj.dollar !== null" class="dollar-value">
+            = {{ obj.dollar }} $
+          </span>
+        </div>
+        <div class="history-time">{{ formatTime(obj.item.timestamp) }}</div>
       </div>
     </div>
   </div>

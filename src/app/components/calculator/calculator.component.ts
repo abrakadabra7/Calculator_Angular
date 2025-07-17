@@ -1,9 +1,15 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CalculatorButtonComponent } from '../buttons/calculator-button.component';
-import { HistoryService, HistoryItem } from '../../services/history.service';
+// import { HistoryService, HistoryItem } from '../../services/history.service';
 import { CalculatorApiService, ResultDto } from '../../services/calculator-api.service';
 import { Observable } from 'rxjs';
+import { Store } from '@ngrx/store';
+import { HistoryItem } from '../../store/history/history.models';
+import * as HistoryActions from '../../store/history/history.actions';
+import * as HistorySelectors from '../../store/history/history.selectors';
+import { ExchangeRateService } from '../../services/exchange-rate.service';
+import { combineLatest, map } from 'rxjs';
 
 @Component({
   selector: 'app-calculator',
@@ -12,7 +18,7 @@ import { Observable } from 'rxjs';
   templateUrl: './calculator.component.html',
   styleUrls: ['./calculator.component.css']
 })
-export class CalculatorComponent {
+export class CalculatorComponent implements OnInit {
   displayValue: string = '0';
   operationDisplay: string = ''; 
   errorMessage: string = '';
@@ -24,12 +30,38 @@ export class CalculatorComponent {
   private currentOperator: string = '';
   private waitingForNumber: boolean = false;
 
-  // Service injections
-  private historyService = inject(HistoryService);
+  // Store injection
+  private store = inject(Store);
   private apiService = inject(CalculatorApiService);
+  private exchangeRateService = inject(ExchangeRateService);
   
-  // History observable
-  public history$: Observable<HistoryItem[]> = this.historyService.history$;
+  // History observable (NgRx store'dan)
+  public history$: Observable<HistoryItem[]> = this.store.select(HistorySelectors.selectHistory);
+  public rate$: Observable<number | null> = this.exchangeRateService.rate$;
+
+  // Hem history hem de kur ile birlikte gösterilecek veri
+  public historyWithDollar$: Observable<Array<{ item: HistoryItem, dollar: number | null }>> = combineLatest([
+    this.history$,
+    this.rate$
+  ]).pipe(
+    map(([history, rate]) =>
+      history.map(item => ({
+        item,
+        dollar: rate ? Number((item.result / rate).toFixed(2)) : null
+      }))
+    )
+  );
+
+  public shownDollarId: number | null = null;
+
+  showDollar(itemId: number) {
+    console.log('Butona basıldı, id:', itemId);
+    this.shownDollarId = itemId;
+  }
+
+  ngOnInit(): void {
+    this.store.dispatch(HistoryActions.loadHistory());
+  }
 
   onButtonClick(label: string) {
     this.errorMessage = '';
@@ -84,12 +116,12 @@ export class CalculatorComponent {
 
   // History'yi temizle
   onClearHistory() {
-    this.historyService.clearHistory();
+    this.store.dispatch(HistoryActions.clearHistory());
   }
 
   // TrackBy function for ngFor performance
-  trackByHistoryId(index: number, item: HistoryItem): number {
-    return item.id;
+  trackByHistoryId(index: number, obj: { item: HistoryItem, dollar: number | null }): number {
+    return obj.item.id;
   }
 
   // Zaman formatla
@@ -234,7 +266,7 @@ export class CalculatorComponent {
         const result = response.result;
         
         // History'ye ekle
-        this.historyService.addOperation(this.currentOperator, this.previousValue, this.currentValue, result);
+        this.addHistoryOperation(this.currentOperator, this.previousValue, this.currentValue, result);
         
         // Sonucu göster
         this.displayValue = this.formatResult(result);
@@ -271,7 +303,7 @@ export class CalculatorComponent {
         const result = response.result;
         
         // History'ye ekle
-        this.historyService.addOperation('√', originalValue, undefined, result);
+        this.addHistoryOperation('√', originalValue, undefined, result);
         
         // Sonucu göster
         this.displayValue = this.formatResult(result);
@@ -350,5 +382,42 @@ export class CalculatorComponent {
 
   private formatNumber(num: number): string {
     return num.toString();
+  }
+
+  // History'ye ekle (API sonrası)
+  private addHistoryOperation(operation: string, parameter1: number, parameter2: number | undefined, result: number) {
+    const expression = this.formatExpression(operation, parameter1, parameter2, result);
+    const historyItem: HistoryItem = {
+      id: Date.now(), // Basit id, daha iyi bir yöntem isterseniz uuid de kullanabilirsiniz
+      operation,
+      parameter1,
+      parameter2,
+      result,
+      timestamp: new Date(),
+      expression
+    };
+    this.store.dispatch(HistoryActions.addOperation({ operation: historyItem }));
+  }
+
+  // Expression formatla (HistoryService'ten alınan fonksiyon)
+  private formatExpression(operation: string, param1: number, param2: number | undefined, result: number): string {
+    const formattedParam1 = this.formatNumber(param1);
+    const formattedResult = this.formatNumber(result);
+    switch (operation) {
+      case '+':
+        return `${formattedParam1} + ${this.formatNumber(param2!)} = ${formattedResult}`;
+      case '-':
+        return `${formattedParam1} − ${this.formatNumber(param2!)} = ${formattedResult}`;
+      case '×':
+        return `${formattedParam1} × ${this.formatNumber(param2!)} = ${formattedResult}`;
+      case '÷':
+        return `${formattedParam1} ÷ ${this.formatNumber(param2!)} = ${formattedResult}`;
+      case '^':
+        return `${formattedParam1} ^ ${this.formatNumber(param2!)} = ${formattedResult}`;
+      case '√':
+        return `√${formattedParam1} = ${formattedResult}`;
+      default:
+        return `${formattedParam1} = ${formattedResult}`;
+    }
   }
 }
