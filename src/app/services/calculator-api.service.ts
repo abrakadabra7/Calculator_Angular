@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpHeaders, HttpErrorResponse } from '@angular/common/http';
 import { Observable, throwError } from 'rxjs';
 import { catchError, tap, retry } from 'rxjs/operators';
@@ -30,7 +30,9 @@ export class CalculatorApiService {
   private readonly baseUrl = environment.useProxy ? '' : environment.apiUrl;
   private readonly token = 'ipEjAfe1zXy1EAEsIzFQJacDCjcMDwJRt2rZIlIXoqb4e7TyE4HWM0A1bZSPDChB';
 
-  constructor(private http: HttpClient) {}
+  private http = inject(HttpClient);
+
+  constructor() {}
 
   private getHeaders(): HttpHeaders {
     return new HttpHeaders({
